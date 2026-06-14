@@ -1,0 +1,29 @@
+# compiled binaries
+*.o
+*.bin
+*.elf
+*.iso
+*.img
+
+# debug files
+*.asm
+*.sym
+*.map
+*.d
+
+# QEMU
+*.log
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.neovim/
+
+# system
+.DS_Store
+Thumbs.db
+
+# others
+notes
