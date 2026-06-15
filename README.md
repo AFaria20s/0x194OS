@@ -24,3 +24,5 @@ make run
 ```
 make
 ```
+---
+no AI slop was used during the making of this project
