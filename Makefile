@@ -2,7 +2,7 @@ CC = gcc
 AS = as
 CFLAGS = -m32 -nostdlib -ffreestanding -fno-stack-protector -fno-pic -Wall
 
-KERNEL_C = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/keyboard.c
+KERNEL_C = kernel/kernel.c kernel/gdt.c kernel/idt.c kernel/keyboard.c kernel/shell.c
 KERNEL_ASM = boot/boot.s
 LINKER = linker.ld
 
@@ -15,7 +15,8 @@ kernel.bin: $(KERNEL_ASM) $(KERNEL_C)
 	$(CC) $(CFLAGS) -c kernel/idt.c -o idt.o
 	$(CC) $(CFLAGS) -c kernel/keyboard.c -o keyboard.o
 	$(CC) $(CFLAGS) -c kernel/gdt.c -o gdt.o
-	ld -m elf_i386 -T linker.ld -o kernel.bin boot.o interrupt.o kernel.o gdt.o idt.o keyboard.o
+	$(CC) $(CFLAGS) -c kernel/shell.c -o shell.o
+	ld -m elf_i386 -T linker.ld -o kernel.bin boot.o interrupt.o kernel.o gdt.o idt.o keyboard.o shell.o
 
 os.iso: kernel.bin
 	mkdir -p isodir/boot/grub

@@ -4,6 +4,8 @@
 
 #define KEYBOARD_PORT 0x60
 
+extern void shell_input(char c);
+
 // read byte at given port
 static inline uint8_t inb(uint16_t port) {
   uint8_t val;
@@ -18,19 +20,20 @@ static inline void outb(uint16_t port, uint8_t val) {
 
 // normal keyboard symbols
 static const char scancode_normal[] = {
-    0,   0,   '1',  '2',  '3',  '4', '5', '6',  '7', '8', '9', '0',
-    '-', '=', '\b', '\t', 'q',  'w', 'e', 'r',  't', 'y', 'u', 'i',
-    'o', 'p', '[',  ']',  '\n', 0,   'a', 's',  'd', 'f', 'g', 'h',
-    'j', 'k', 'l',  ';',  '\'', '`', 0,   '\\', 'z', 'x', 'c', 'v',
-    'b', 'n', 'm',  ',',  '.',  '/', 0,   '*',  0,   ' '};
+    0,    0,    '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  '0',
+    '\'', (char)0xAE, '\b', '\t', 'q',  'w',  'e',  'r',  't',  'y',  'u',  'i',
+    'o',  'p',  '+',  '`',  '\n', 0,    'a',  's',  'd',  'f',  'g',  'h',
+    'j',  'k',  'l',  (char)0x87, (char)0xA7, (char)0x15, 0,    '~',  'z',  'x',  'c',  'v',
+    'b',  'n',  'm',  ',',  '.',  '-',  0,    '*',  0,    ' '
+};
 
 // shift-activated keyboard symbols
 static const char scancode_shift[] = {
-    0, 0, '!','"','#','$','%','&','/','(',')','=','?','+','\b',
-    '\t','Q','W','E','R','T','Y','U','I','O','P','[',']','\n',
-    0,'A','S','D','F','G','H','J','K','L',';','\'','`',
-    0,'\\','Z','X','C','V','B','N','M',';',':','_',0,
-    '*',0,' '
+    0,    0,    '!',  '"',  '#',  '$',  '%',  '&',  '/',  '(',  ')',  '=',
+    '?',  (char)0xAF, '\b', '\t', 'Q',  'W',  'E',  'R',  'T',  'Y',  'U',  'I',
+    'O',  'P',  '*',  '^',  '\n', 0,    'A',  'S',  'D',  'F',  'G',  'H',
+    'J',  'K',  'L',  (char)0x80, (char)0xA6, '|', 0,    '^',  'Z',  'X',  'C',  'V',
+    'B',  'N',  'M',  ';',  ':',  '_',  0,    '*',  0,    ' '
 };
 
 static int shift_pressed = 0;
@@ -46,25 +49,22 @@ void keyboard_handler(void) {
 
   // if not released -> 0x80
   else if (!(scancode & 0x80)) {
-    if (scancode < sizeof(scancode_normal)) {
-      char c;
-      int use_upper = (caps_lock ^ shift_pressed);
+    char c = 0;
 
-      if (shift_pressed) {
-        c = scancode_shift[scancode];
-      } else {
-        c = scancode_normal[scancode];
-      }
-
-      // caps lock for letters only
-      if (caps_lock && !shift_pressed && c >= 'a' && c <= 'z') {
-        c = c - 'a' + 'A';
-      } else if (caps_lock && shift_pressed && c >= 'A' && c <= 'Z') {
-        c = c - 'A' + 'a';
-      }
-
-      if (c) t_putchar(c);
+    if (scancode == 0x56) {
+      c = shift_pressed ? '>' : '<';
+    } else if (scancode < sizeof(scancode_normal)) {
+      c = shift_pressed ? scancode_shift[scancode] : scancode_normal[scancode];
     }
+
+    // caps lock for letters only
+    if (caps_lock && !shift_pressed && c >= 'a' && c <= 'z') {
+      c = c - 'a' + 'A';
+    } else if (caps_lock && shift_pressed && c >= 'A' && c <= 'Z') {
+      c = c - 'A' + 'a';
+    }
+
+    if (c) shell_input(c);
   }
 
   outb(0x20, 0x20);

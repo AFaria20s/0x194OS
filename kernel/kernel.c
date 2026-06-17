@@ -6,7 +6,6 @@
 
 extern void idt_init(void);
 extern void gdt_init(void);
-
 enum vga_color {
   VGA_COLOR_BLACK = 0,
   VGA_COLOR_BLUE = 1,
