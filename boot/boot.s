@@ -4,6 +4,8 @@
 .set MAGIC,    0x1BADB002
 .set CHECKSUM, -(MAGIC + FLAGS)
 
+# Multiboot header and checksum required by bootloader
+
 .section .multiboot
 .align 4
 .long MAGIC
@@ -20,8 +22,12 @@ stack_top:
 .global _start
 .type _start, @function
 _start:
+    // Initialize stack and call kernel
     mov $stack_top, %esp
+    push %ebx
+    push %eax
     call kernel_main
+    add $8, %esp
     cli
 1:  hlt
     jmp 1b

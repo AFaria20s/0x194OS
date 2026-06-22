@@ -25,11 +25,12 @@ void pic_init(void) {
   outb(PIC1_DATA, 0x01);
   outb(PIC2_DATA, 0x01);
 
-  // Leaves only the keyboard enabled.
+  // Leave only keyboard enabled (PIC mask)
   outb(PIC1_DATA, 0xFD);
   outb(PIC2_DATA, 0xFF);
 }
 
+// IDT entry structure
 struct idt_entry {
   uint16_t base_low;
   uint16_t selector;
@@ -38,6 +39,7 @@ struct idt_entry {
   uint16_t base_high;
 } __attribute__((packed));
 
+// Pointer used by lidt
 struct idt_ptr {
   uint16_t limit;
   uint32_t base;
@@ -56,6 +58,7 @@ void idt_set_gate(uint8_t num, uint32_t base, uint16_t selector,
 }
 
 void idt_init(void) {
+  // Initialize IDT, configure PIC and enable keyboard ISR
   idtp.limit = (sizeof(struct idt_entry) * 256) - 1;
   idtp.base = (uint32_t)&idt;
 

@@ -1,6 +1,7 @@
 #include "../include/kstring.h"
 
 size_t k_strlen(const char *str) {
+  // Return length of a null-terminated string
   size_t len = 0;
 
   while (str[len])
@@ -10,6 +11,7 @@ size_t k_strlen(const char *str) {
 }
 
 int k_strcmp(const char *a, const char *b) {
+  // Compare two strings and return byte difference
   while (*a && *a == *b) {
     a++;
     b++;
@@ -19,10 +21,12 @@ int k_strcmp(const char *a, const char *b) {
 }
 
 static int k_isspace(char c) {
+  // Check space or tab
   return c == ' ' || c == '\t';
 }
 
 int k_split(char *line, char **argv, int max_args) {
+  // Split the line into arguments in-place and return argc
   int argc = 0;
 
   while (*line && argc < max_args) {
@@ -50,6 +54,7 @@ int k_split(char *line, char **argv, int max_args) {
 }
 
 void k_itoa(int value, char *buffer, int base) {
+  // Convert integer to string in given base (2..16)
   char digits[] = "0123456789abcdef";
   char tmp[33];
   int i = 0;

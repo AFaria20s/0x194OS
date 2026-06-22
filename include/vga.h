@@ -14,7 +14,12 @@ extern uint8_t t_color;
 void t_putchar(char c);
 void t_putentryat(char c, uint8_t color, size_t x, size_t y);
 void t_print(const char *data);
+void t_print_raw(const char *data);
 void t_setcolor(uint8_t color);
+void t_scroll(void);
+void t_scroll_view_up(void);
+void t_scroll_view_down(void);
+void t_scroll_to_bottom(void);
 
 // Clears the screen.
 void t_clear(void);

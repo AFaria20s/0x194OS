@@ -2,39 +2,35 @@
 #include "../include/io.h"
 #include "../include/keyboard.h"
 #include "../include/kstring.h"
+#include "../include/memory.h"
 #include "../include/shell.h"
 #include "../include/vga.h"
 
 #define BUFFER_SIZE 256
-#define HISTORY_SIZE 32
-#define CMOS_ADDRESS 0x70 
+#define HISTORY_LIMIT 64
+#define CMOS_ADDRESS 0x70
 #define CMOS_DATA    0x71
 
 struct history_entry {
   int seq;
   char timestamp[9];
-  char line[BUFFER_SIZE];
+  char *line;
+  struct history_entry *older;
+  struct history_entry *newer;
 };
 
 static char input_buffer[BUFFER_SIZE];
 static int buffer_len = 0;
 static int cursor_pos = 0;
 
-// Command History
-static struct history_entry history[HISTORY_SIZE];
-static int history_count = 0; // number of valid entries
-static int history_head = 0;  // next write position
-static int history_pos = -1;  // current navigation position
+static struct history_entry *history_oldest = NULL;
+static struct history_entry *history_newest = NULL;
+static struct history_entry *history_pos = NULL;
+static int history_count = 0;
 static int history_seq = 0;
 static char history_draft[BUFFER_SIZE];
-
-static int history_oldest_pos(void) {
-  return (history_head - history_count + HISTORY_SIZE) % HISTORY_SIZE;
-}
-
-static int history_newest_pos(void) {
-  return (history_head - 1 + HISTORY_SIZE) % HISTORY_SIZE;
-}
+static size_t prompt_col = 0;
+static size_t prompt_row = 0;
 
 static void history_save_draft(void) {
   int i = 0;
@@ -46,7 +42,7 @@ static void history_save_draft(void) {
 }
 
 static void history_stop_navigation(void) {
-  history_pos = -1;
+  history_pos = NULL;
 }
 
 static uint8_t cmos_read(uint8_t reg) {
@@ -68,11 +64,7 @@ static void history_format_two_digits(int value, char *out) {
 }
 
 static void history_read_timestamp(char out[9]) {
-  uint8_t second;
-  uint8_t minute;
-  uint8_t hour;
-  uint8_t status_b;
-  uint8_t last_second;
+  uint8_t second, minute, hour, status_b, last_second;
   int pm;
 
   while (cmos_updating()) {}
@@ -116,78 +108,144 @@ static void history_read_timestamp(char out[9]) {
   out[8] = '\0';
 }
 
-// Adds the current line to history (truncates to BUFFER_SIZE-1)
+static char *history_copy_line(const char *line) {
+  size_t len = k_strlen(line);
+  char *copy = (char *)kmalloc(len + 1);
+
+  if (!copy)
+    return NULL;
+
+  for (size_t i = 0; i <= len; i++)
+    copy[i] = line[i];
+
+  return copy;
+}
+
+static void history_free_entry(struct history_entry *entry) {
+  if (!entry)
+    return;
+
+  kfree(entry->line);
+  kfree(entry);
+}
+
+static void history_drop_oldest(void) {
+  struct history_entry *entry = history_oldest;
+
+  if (!entry)
+    return;
+
+  history_oldest = entry->newer;
+  if (history_oldest)
+    history_oldest->older = NULL;
+  else
+    history_newest = NULL;
+
+  if (history_pos == entry)
+    history_pos = NULL;
+
+  history_count--;
+  history_free_entry(entry);
+}
+
 static void history_add(const char *line) {
-  int i = 0;
-  while (i < BUFFER_SIZE - 1 && line[i]) {
-    history[history_head].line[i] = line[i];
-    i++;
-  }
-  history[history_head].line[i] = '\0';
-  history[history_head].seq = ++history_seq;
-  history_read_timestamp(history[history_head].timestamp);
+  struct history_entry *entry = (struct history_entry *)kmalloc(sizeof(struct history_entry));
 
-  history_head = (history_head + 1) % HISTORY_SIZE;
-  if (history_count < HISTORY_SIZE) history_count++;
-  history_pos = -1;
+  if (!entry)
+    return;
+
+  entry->line = history_copy_line(line);
+  if (!entry->line) {
+    kfree(entry);
+    return;
+  }
+
+  entry->seq = ++history_seq;
+  history_read_timestamp(entry->timestamp);
+  entry->older = history_newest;
+  entry->newer = NULL;
+
+  if (history_newest)
+    history_newest->newer = entry;
+  else
+    history_oldest = entry;
+
+  history_newest = entry;
+  history_count++;
+  history_pos = NULL;
+
+  while (history_count > HISTORY_LIMIT)
+    history_drop_oldest();
 }
 
-// Navigate to previous entry. Returns pointer to entry or NULL if none.
 static const char *history_prev(void) {
-  if (history_count == 0) return NULL;
+  if (history_count == 0)
+    return NULL;
 
-  if (history_pos == -1) {
+  if (!history_pos) {
     history_save_draft();
-    history_pos = history_newest_pos();
-    return history[history_pos].line;
+    history_pos = history_newest;
+    return history_pos->line;
   }
 
-  if (history_pos == history_oldest_pos()) return history[history_pos].line;
+  if (!history_pos->older)
+    return history_pos->line;
 
-  history_pos = (history_pos - 1 + HISTORY_SIZE) % HISTORY_SIZE;
-  return history[history_pos].line;
+  history_pos = history_pos->older;
+  return history_pos->line;
 }
 
-// Navigate to next entry. Returns the saved draft after the newest command.
 static const char *history_next(void) {
-  if (history_count == 0 || history_pos == -1) return NULL;
+  if (history_count == 0 || !history_pos)
+    return NULL;
 
-  if (history_pos == history_newest_pos()) {
-    history_pos = -1;
+  if (!history_pos->newer) {
+    history_pos = NULL;
     return history_draft;
   }
 
-  history_pos = (history_pos + 1) % HISTORY_SIZE;
-  return history[history_pos].line;
+  history_pos = history_pos->newer;
+  return history_pos->line;
 }
 
 void shell_print_history(void) {
   char number[12];
-  int pos = history_oldest_pos();
+  struct history_entry *entry = history_oldest;
 
   if (history_count == 0) {
     t_print("history: empty\n");
     return;
   }
 
-  for (int i = 0; i < history_count; i++) {
-    k_itoa(history[pos].seq, number, 10);
-    t_print(number);
+  t_print("$bNo  Time      Command$f\n\n");
+
+  while (entry) {
+    k_itoa(entry->seq, number, 10);
+    t_print_raw(number);
+    t_print("   ");
+    t_print_raw(entry->timestamp);
     t_print("  ");
-    t_print(history[pos].timestamp);
-    t_print("  ");
-    t_print(history[pos].line);
+    t_print_raw(entry->line);
     t_putchar('\n');
 
-    pos = (pos + 1) % HISTORY_SIZE;
+    entry = entry->newer;
   }
 }
 
-// Forward declarations used by shell_replace_input
 static void shell_screen_pos(int pos, size_t *col, size_t *row);
 static void shell_move_cursor_to(int pos);
 
-// Replace the current input buffer with string `s` (handles redraw and clearing)
+static void shell_ensure_input_visible(int len) {
+  size_t needed_row = prompt_row + (prompt_col + (size_t)len) / VGA_WIDTH;
+
+  while (needed_row >= VGA_HEIGHT) {
+    t_scroll();
+    if (prompt_row > 0)
+      prompt_row--;
+    needed_row--;
+  }
+}
+
 static void shell_replace_input(const char *s) {
   int prev_len = buffer_len;
   int i = 0;
@@ -198,14 +256,13 @@ static void shell_replace_input(const char *s) {
   buffer_len = i;
   input_buffer[buffer_len] = '\0';
   cursor_pos = buffer_len;
+  shell_ensure_input_visible(buffer_len);
 
-  // redraw the whole line region from 0..buffer_len-1
   size_t col, row;
   for (int j = 0; j < buffer_len; j++) {
     shell_screen_pos(j, &col, &row);
     t_putentryat(input_buffer[j], t_color, col, row);
   }
-  // clear leftover characters from previous longer line
   for (int j = buffer_len; j < prev_len; j++) {
     shell_screen_pos(j, &col, &row);
     t_putentryat(' ', t_color, col, row);
@@ -214,14 +271,9 @@ static void shell_replace_input(const char *s) {
   shell_move_cursor_to(cursor_pos);
 }
 
-// Position where text starts after the prompt.
-static size_t prompt_col = 0;
-static size_t prompt_row = 0;
-
-// Converts a buffer position to a screen position.
 static void shell_screen_pos(int pos, size_t *col, size_t *row) {
   size_t total = prompt_row * VGA_WIDTH + prompt_col + (size_t)pos;
-  *row = (total / VGA_WIDTH) % VGA_HEIGHT;
+  *row = total / VGA_WIDTH;
   *col = total % VGA_WIDTH;
 }
 
@@ -233,7 +285,6 @@ static void shell_move_cursor_to(int pos) {
   vga_update_cursor(col, row);
 }
 
-// Redraws the line after inserting or deleting text.
 static void shell_redraw_from(int from) {
   size_t col, row;
 
@@ -249,8 +300,10 @@ static void shell_redraw_from(int from) {
 }
 
 static void shell_insert_char(char c) {
-  if (buffer_len >= BUFFER_SIZE - 1) return;
+  if (buffer_len >= BUFFER_SIZE - 1)
+    return;
   history_stop_navigation();
+  shell_ensure_input_visible(buffer_len + 1);
 
   for (int i = buffer_len; i > cursor_pos; i--) {
     input_buffer[i] = input_buffer[i - 1];
@@ -264,7 +317,8 @@ static void shell_insert_char(char c) {
 }
 
 static void shell_delete_before_cursor(void) {
-  if (cursor_pos == 0) return;
+  if (cursor_pos == 0)
+    return;
   history_stop_navigation();
 
   for (int i = cursor_pos - 1; i < buffer_len - 1; i++) {
@@ -278,7 +332,8 @@ static void shell_delete_before_cursor(void) {
 }
 
 static void shell_delete_at_cursor(void) {
-  if (cursor_pos >= buffer_len) return;
+  if (cursor_pos >= buffer_len)
+    return;
   history_stop_navigation();
 
   for (int i = cursor_pos; i < buffer_len - 1; i++) {
@@ -316,14 +371,15 @@ void shell_prompt(void) {
 void shell_process(void) {
   input_buffer[buffer_len] = '\0';
 
-  // Move to the end of the line before running the command.
   size_t col, row;
+  shell_ensure_input_visible(buffer_len);
   shell_screen_pos(buffer_len, &col, &row);
   t_column = col;
   t_row = row;
 
   t_putchar('\n');
-  if (buffer_len > 0) history_add(input_buffer);
+  if (buffer_len > 0)
+    history_add(input_buffer);
   cmd_execute(input_buffer);
 
   buffer_len = 0;
@@ -350,21 +406,30 @@ void shell_input(int key) {
       shell_move_right();
       break;
     case KEY_PGUP:
+    case KEY_SCROLL_UP:
+      t_scroll_view_up();
+      break;
+    case KEY_PGDOWN:
+    case KEY_SCROLL_DOWN:
+      t_scroll_view_down();
+      break;
     case KEY_UP:
       {
         const char *h = history_prev();
-        if (h) shell_replace_input(h);
+        if (h)
+          shell_replace_input(h);
       }
       break;
-    case KEY_PGDOWN:
     case KEY_DOWN:
       {
         const char *h = history_next();
-        if (h) shell_replace_input(h);
+        if (h)
+          shell_replace_input(h);
       }
       break;
     default:
-      if (key >= ' ' && key <= 0xFF) shell_insert_char((char)key);
+      if (key >= ' ' && key <= 0xFF)
+        shell_insert_char((char)key);
       break;
   }
 }
