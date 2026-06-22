@@ -215,11 +215,6 @@ static void cmd_mem_test_detail(int simulate_fail) {
   }
   print_test_step("read test pattern", ok);
 
-  if (simulate_fail) {
-    // Temporary failure hook: remove this branch when you no longer need it.
-    print_test_step("simulated failure", 0);
-  }
-
   kfree(ptr);
   memory_get_stats(&after_free);
   print_test_step("kfree block", after_free.allocation_count == before.allocation_count);
