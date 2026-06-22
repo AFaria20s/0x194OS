@@ -118,6 +118,7 @@ void t_init(void) {
 void t_setcolor(uint8_t color) { t_color = color; }
 
 void t_putentryat(char c, uint8_t color, size_t x, size_t y) {
+  // Write a character at (x,y) with color
   if (x >= VGA_WIDTH || y >= VGA_HEIGHT)
     return;
 
@@ -163,6 +164,7 @@ void t_scroll_view_down(void) {
 }
 
 void t_clear(void) {
+  // Clear the screen and reset cursor
   for (size_t y = 0; y < VGA_HEIGHT; y++)
     t_clear_row(t_screen[y]);
 
@@ -196,6 +198,7 @@ void vga_update_cursor(size_t col, size_t row) {
 }
 
 void t_putchar(char c) {
+  // Put a character into the buffer and handle newlines and wrapping
   t_scroll_to_bottom();
 
   if (c == '\n') {
