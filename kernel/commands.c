@@ -6,7 +6,6 @@
 #include "../include/keyboard_layouts.h"
 #include "../include/memory.h"
 #include "../include/paging.h"
-
 // Maximum arguments per command
 #define CMD_MAX_ARGS 16
 
@@ -28,6 +27,7 @@ static void cmd_sudo(int argc, char **argv);
 static void cmd_layout(int argc, char **argv);
 static void cmd_mem(int argc, char **argv);
 static void cmd_paging(int argc, char **argv);
+static void cmd_whatami(int argc, char **argv);
 
 // Command table
 // leave description empty/NULL to not show on "help"
@@ -41,9 +41,14 @@ static const struct command commands[] = {
   {"layout", "show or set keyboard layout", cmd_layout},
   {"mem", "shows kernel memory usage", cmd_mem},
   {"paging", "shows paging status", cmd_paging},
+  {"whatami", "where are you?", cmd_whatami},
 };
 
 static const int command_count = sizeof(commands) / sizeof(commands[0]);
+
+static void cmd_whatami(int argc, char **argv) {
+  
+}
 
 static void print_padded(const char *text, int width) {
   int len = 0;
