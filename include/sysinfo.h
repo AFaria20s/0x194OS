@@ -25,7 +25,7 @@ struct system_info {
     size_t ram_kib;
     size_t heap_used;
     size_t heap_free;
-    uint32_t disk_mib;
+    uint32_t disk_mb;
     uint8_t hour;
     uint8_t minute;
     uint8_t second;

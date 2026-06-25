@@ -2,6 +2,7 @@
 #include "../include/kstring.h"
 #include "../include/memory.h"
 #include "../include/io.h"
+#include "../include/ata.h"
 
 #define CMOS_ADDRESS 0x70
 #define CMOS_DATA    0x71
@@ -19,15 +20,18 @@ static int bcd_to_binary(uint8_t value);
 
 void system_getinfo(struct system_info *info) {
     struct memory_stats mem_stats;
+    struct ata_info ata_info;
+
     memory_get_stats(&mem_stats);
+    ata_identify(&ata_info);
 
     k_strcat(info->os_name, OS_NAME, OS_MODEL, OS_SEP);
     k_strcp(info->architecture, ARCH_STRING);
     k_strcat(info->build, __DATE__, __TIME__, " @ ");
+    info->disk_mb=ata_info.size_mb;
     info->ram_kib = mem_stats.total_bytes / 1024;
     info->heap_used = mem_stats.used_bytes;
     info->heap_free = mem_stats.free_bytes;
-    info->disk_mib = 0;                     // Unknown until ATA IDENTIFY step
     system_read_rtc(info);                  // Date + Time "info" fields
     system_read_cpu(info);
     system_read_gpu(info);

@@ -87,7 +87,7 @@ static void cmd_whatami(int argc, char **argv) {
   print_uint(sysinfo.heap_free);
   t_print(" bytes\n");
   t_print_padded("Disk Size", PADDING);
-  print_uint(sysinfo.disk_mib);
+  print_uint(sysinfo.disk_mb);
   t_print(" MiB\n");
   t_print_padded("Date", PADDING);
   print_uint2(sysinfo.day);
